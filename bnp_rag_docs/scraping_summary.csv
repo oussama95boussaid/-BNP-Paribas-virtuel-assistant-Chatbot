@@ -1,0 +1,10 @@
+id,category,title,url,word_count,has_error
+doc_0,Accueil / Vue d’ensemble,BNP PARIBAS BANQUE ET ASSURANCES,https://mabanque.bnpparibas/,1865,False
+doc_1,Comptes & Formules,Comptes & Formules,https://mabanque.bnpparibas/fr/devenir-client/compte-bancaire,0,True
+doc_2,Épargne & Livrets,Épargne & Livrets,https://mabanque.bnpparibas/fr/epargner/comptes-livrets-epargne,170,False
+doc_3,Crédits & Financement,Crédits & Financement,https://mabanque.bnpparibas/fr/vos-besoins/vos-projets,14,False
+doc_4,Cartes bancaires,Cartes bancaires,https://mabanque.bnpparibas/fr/gerer/services-bancaires/cartes,0,True
+doc_5,Bourse & Placement,Nos offres et Services d’investissement en Bourse,https://mabanque.bnpparibas/fr/bourse/nos-offres-et-services-bourse,567,False
+doc_7,FAQ / Aide & Services,FAQ / Aide & Services,https://mabanque.bnpparibas/fr/ma-banque-et-moi/nos-services-accompagnement/tous-nos-services-d-accompagnement,2449,False
+doc_8,Tarifs & Conditions,Tarifs & Conditions,https://mabanque.bnpparibas/fr/notre-offre/tarifs,0,True
+doc_9,Sécurité / Connexion,Sécurité / Connexion,https://mabanque.bnpparibas/fr/securite,0,True

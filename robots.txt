@@ -1,0 +1,37 @@
+User-agent: *
+Disallow: /fr/secure
+Disallow: /fr/connexion
+Disallow: /*?
+Disallow: /*.pdf$
+Disallow: /getdocumentinformation-wspl/rest/getdocument?
+Disallow: /en/
+Disallow: /*systeme/
+Disallow: /*undefined/
+Disallow: /*/portail/
+Disallow: /static/
+Disallow: /sites/
+Disallow: /rsc/contrib/minisite/
+Disallow: /rsc/contrib/flipbook/
+Disallow: /rsc/contrib/html/
+Disallow: /rsc/contrib/dev/
+Disallow: /*le-mag/search
+Disallow: /fr/a-la-une-pro
+Disallow: /*-pro/
+Disallow: /fr/entrepos-le-club
+Disallow: /fr/a-la-une-bpf
+Disallow: /*-privee/
+Disallow: /fr/portraits-dexperts
+Disallow: /fr/conseil-patrimonial-et-financier
+Disallow: /fr/nos-solutions-dediees
+Disallow: /fr/le-cercle-wealth
+Disallow: /fr/banque-contact
+Disallow: /fr/espace-prive
+Disallow: /sitedemo-bpf
+Disallow: /sitedemo
+Disallow: /sitedemo-pro
+Disallow: /fr/assurer/logement/assurance-habitation-bnp.html
+Disallow: /fr/client/
+Sitemap: https://mabanque.bnpparibas/sitemap.xml
+
+
+
