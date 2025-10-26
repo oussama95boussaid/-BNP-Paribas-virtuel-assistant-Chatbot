@@ -199,15 +199,6 @@ CHUNK_OVERLAP = 200
 pip install --upgrade langchain langchain-core langchain-community langchain-ollama
 ```
 
-### Vector DB Not Found
-
-**Error**: `Config file not found: chroma_db/config.json`
-
-**Solution**: Run the setup script first:
-```bash
-python rag_system_llm_Ollama.py
-```
-
 ## 🔒 Environment Variables
 
 Create a `.env` file for API keys (if using cloud LLMs):
