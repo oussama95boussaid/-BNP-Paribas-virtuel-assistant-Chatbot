@@ -1,18 +1,20 @@
 """
 Production RAG System - BNP Paribas Assistant
-HuggingFace Embeddings + Ollama + FastAPI
+HuggingFace Embeddings + OpenAI + FastAPI
 """
 
 import json
+import os
 from pathlib import Path
 from typing import Dict, List, Optional
+from dotenv import load_dotenv
 
 from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_openai import ChatOpenAI
 from langchain_community.vectorstores import Chroma
-from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
-from langchain_ollama import OllamaLLM as _OllamaClass
+from langchain_core.prompts import PromptTemplate
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,18 +27,27 @@ import uvicorn
 # ============================================================================
 
 class BNPAssistant:
-    """Production RAG Assistant - loads existing vector DB"""
+    """Production RAG Assistant with OpenAI"""
     
-    def __init__(self, config_path: str = "config/config_ollama.json"):
+    def __init__(self, config_path: str = "config/config_gpt.json"):
         """Initialize assistant by loading existing configuration and DB"""
         
-        print("🚀 Initializing BNP Paribas Assistant...")
+        print("Initializing BNP Paribas Assistant (OpenAI)...")
+        
+        # Load environment variables
+        load_dotenv()
+        
+        # Verify OpenAI API key
+        if not os.getenv("OPENAI_API_KEY"):
+            raise ValueError(
+                "OPENAI_API_KEY not found! Please set it in .env file or environment."
+            )
         
         # Load configuration
         self.config = self._load_config(config_path)
         
-        # Initialize embeddings 
-        print("📦 Loading embeddings model...")
+        # Initialize embeddings
+        print("Loading HuggingFace embeddings model...")
         self.embeddings = HuggingFaceEmbeddings(
             model_name=self.config['embedding_model'],
             model_kwargs={'device': 'cpu'},
@@ -45,7 +56,7 @@ class BNPAssistant:
         print("✓ Embeddings loaded")
         
         # Load existing ChromaDB
-        print("💾 Loading vector database...")
+        print("Loading vector database...")
         self.vectorstore = Chroma(
             persist_directory=self.config['chroma_db_dir'],
             embedding_function=self.embeddings,
@@ -53,21 +64,17 @@ class BNPAssistant:
         )
         print(f"✓ Vector DB loaded ({self.config['total_chunks']} chunks)")
         
-        # Initialize LLM
-        print(f"🤖 Initializing {self.config['llm_model']}...")
-        self.llm = _OllamaClass(
+        # Initialize OpenAI LLM
+        print(f"Initializing OpenAI {self.config['llm_model']}...")
+        self.llm = ChatOpenAI(
             model=self.config['llm_model'],
-            temperature=0.3
+            temperature=0.3,
+            max_tokens=1000
         )
-        print("✓ LLM ready")
+        print("✓ OpenAI LLM ready")
         
         # Create prompt template
         self.prompt = self._create_prompt()
-        
-        # Create retriever
-        self.retriever = self.vectorstore.as_retriever(
-            search_kwargs={"k": self.config['top_k_results']}
-        )
         
         # Create RAG chain using LCEL (LangChain Expression Language)
         def format_docs(docs):
@@ -134,12 +141,12 @@ Réponse détaillée / Detailed answer:"""
             
         Returns:
             Dictionary with answer and sources
-        """ 
-        # Get answer using LCEL chain
-        answer = self.rag_chain.invoke(question)
+        """
+        # Get answer
+        result = self.qa_chain.invoke({"query": question})
         
-        # Get source documents separately
-        sources = self.retriever.invoke(question)
+        answer = result['result']
+        sources = result['source_documents']
         
         response = {
             'question': question,
@@ -158,9 +165,13 @@ Réponse détaillée / Detailed answer:"""
         
         return response
     
-
-    
-    
+    # def batch_query(self, questions: List[str]) -> List[Dict]:
+    #     """Process multiple questions"""
+    #     results = []
+    #     for q in questions:
+    #         result = self.query(q, include_sources=False)
+    #         results.append(result)
+    #     return results
 
 
 # ============================================================================
@@ -170,7 +181,7 @@ Réponse détaillée / Detailed answer:"""
 # Initialize FastAPI app
 app = FastAPI(
     title="BNP Paribas RAG Assistant API",
-    description="AI-powered banking assistant using RAG with Ollama (100% Free & Local)",
+    description="AI-powered banking assistant using RAG (Retrieval-Augmented Generation)",
     version="1.0.0"
 )
 
@@ -213,6 +224,19 @@ class QueryResponse(BaseModel):
     sources: Optional[List[Source]] = None
 
 
+# class BatchQueryRequest(BaseModel):
+#     questions: List[str] = Field(..., description="List of questions", min_items=1, max_items=10)
+    
+#     class Config:
+#         json_schema_extra = {
+#             "example": {
+#                 "questions": [
+#                     "Quelles cartes bancaires proposez-vous ?",
+#                     "What savings accounts are available?"
+#                 ]
+#             }
+#         }
+
 
 class HealthResponse(BaseModel):
     status: str
@@ -238,7 +262,7 @@ async def root():
     """Root endpoint - API information"""
     return {
         "status": "online",
-        "message": "BNP Paribas RAG Assistant API is running (Ollama - 100% Free)",
+        "message": "BNP Paribas RAG Assistant API is running",
         "config": assistant.config if assistant else None
     }
 
@@ -255,8 +279,7 @@ async def health_check():
         "config": {
             "total_documents": assistant.config['total_documents'],
             "total_chunks": assistant.config['total_chunks'],
-            "llm_model": assistant.config['llm_model'],
-            "embedding_model": assistant.config['embedding_model']
+            "llm_model": assistant.config['llm_model']
         }
     }
 
@@ -282,6 +305,22 @@ async def query(request: QueryRequest):
         raise HTTPException(status_code=500, detail=f"Error processing query: {str(e)}")
 
 
+# @app.post("/batch-query", response_model=List[QueryResponse])
+# async def batch_query(request: BatchQueryRequest):
+#     """
+#     Process multiple questions at once
+    
+#     - **questions**: List of questions (max 10)
+#     """
+#     if assistant is None:
+#         raise HTTPException(status_code=503, detail="Assistant not initialized")
+    
+#     try:
+#         results = assistant.batch_query(request.questions)
+#         return results
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"Error processing batch query: {str(e)}")
+
 
 # ============================================================================
 # STANDALONE SCRIPT MODE
@@ -296,42 +335,22 @@ def run_cli():
     # Initialize assistant
     assistant = BNPAssistant()
     
-    # Example 1: Single query in French
+    # Example queries
     print("\n" + "="*60)
     print("EXAMPLE 1: French Query")
     print("="*60)
     result1 = assistant.query("Quelles sont les cartes bancaires disponibles ?")
     print(f"\n❓ {result1['question']}")
     print(f"💬 {result1['answer']}")
-    if result1.get('sources'):
-        print(f"\n📚 Sources:")
-        for i, source in enumerate(result1['sources'], 1):
-            print(f"  {i}. {source['category']} - {source['url']}")
+    print(f"📚 Sources: {len(result1['sources'])}")
     
-    # Example 2: Single query in English
     print("\n" + "="*60)
     print("EXAMPLE 2: English Query")
     print("="*60)
     result2 = assistant.query("What savings accounts do you offer?")
     print(f"\n❓ {result2['question']}")
     print(f"💬 {result2['answer']}")
-    if result2.get('sources'):
-        print(f"\n📚 Sources:")
-        for i, source in enumerate(result2['sources'], 1):
-            print(f"  {i}. {source['category']} - {source['url']}")
-    
-    # Example 3: Batch queries
-    print("\n" + "="*60)
-    print("EXAMPLE 3: Batch Queries")
-    print("="*60)
-    questions = [
-        "Quels sont les livrets d'épargne disponibles ?",
-        "How can I finance a real estate project?"
-    ]
-    batch_results = assistant.batch_query(questions)
-    for i, result in enumerate(batch_results, 1):
-        print(f"\n{i}. {result['question']}")
-        print(f"   Answer: {result['answer'][:150]}...")
+    print(f"📚 Sources: {len(result2['sources'])}")
     
     print("\n" + "="*60)
     print("✅ CLI examples completed!")
@@ -358,30 +377,16 @@ def run_server(host: str = "0.0.0.0", port: int = 8000):
 if __name__ == "__main__":
     import sys
     
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "server":
-            # Run FastAPI server
-            run_server()
-        elif sys.argv[1] == "chat":
-            # Run interactive chat
-            assistant = BNPAssistant()
-            assistant.chat()
-        else:
-            print("Usage:")
-            print("  python rag_production.py           # Run CLI examples")
-            print("  python rag_production.py server    # Start FastAPI server")
-            print("  python rag_production.py chat      # Interactive chat mode")
+    if len(sys.argv) > 1 and sys.argv[1] == "server":
+        # Run FastAPI server
+        run_server()
     else:
         # Run CLI examples
         run_cli()
         
         print("\n" + "="*60)
-        print("NEXT STEPS:")
-        print("="*60)
-        print("To start FastAPI server:")
-        print("  python rag_production.py server")
-        print("\nTo start interactive chat:")
-        print("  python rag_production.py chat")
+        print("To start FastAPI server, run:")
+        print("  python rag_openai_prod.py server")
         print("\nOr manually:")
-        print("  uvicorn rag_production:app --reload")
+        print("  uvicorn rag_openai_prod:app --reload")
         print("="*60)

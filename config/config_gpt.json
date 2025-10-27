@@ -1,0 +1,10 @@
+{
+  "embedding_model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+  "llm_model": "gpt-3.5-turbo",
+  "chunk_size": 1000,
+  "chunk_overlap": 200,
+  "top_k_results": 3,
+  "chroma_db_dir": "chroma_db",
+  "total_documents": 9,
+  "total_chunks": 56
+}
