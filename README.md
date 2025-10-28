@@ -2,6 +2,10 @@
 
 A production-ready RAG (Retrieval-Augmented Generation) system that provides intelligent answers to customer questions about BNP Paribas banking products and services.
 
+## Frontend
+UI available at: https://github.com/oussama95boussaid/bnp-paribas-assistant-frontend
+Live demo: to come
+
 ## 🎯 Project Objectives
 
 - **Intelligent Banking Assistant**: Provide accurate, context-aware answers about BNP Paribas products, services, and procedures
