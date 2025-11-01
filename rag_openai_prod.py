@@ -79,7 +79,12 @@ class BNPAssistant:
         # Create RAG chain using LCEL (LangChain Expression Language)
         def format_docs(docs):
             return "\n\n".join(doc.page_content for doc in docs)
-        
+        # Create a retriever from the vectorstore
+        self.retriever = self.vectorstore.as_retriever(
+            search_kwargs={"k": self.config.get('top_k_results', 3)}
+        )
+
+        # Build the LCEL RAG chain
         self.rag_chain = (
             {"context": self.retriever | format_docs, "question": RunnablePassthrough()}
             | self.prompt
@@ -142,11 +147,11 @@ Réponse détaillée / Detailed answer:"""
         Returns:
             Dictionary with answer and sources
         """
-        # Get answer
-        result = self.qa_chain.invoke({"query": question})
-        
-        answer = result['result']
-        sources = result['source_documents']
+        # Get answer using LCEL chain
+        answer = self.rag_chain.invoke(question)
+
+        # Retrieve source documents separately for attribution
+        sources = self.retriever.invoke(question)
         
         response = {
             'question': question,
@@ -165,228 +170,95 @@ Réponse détaillée / Detailed answer:"""
         
         return response
     
-    # def batch_query(self, questions: List[str]) -> List[Dict]:
-    #     """Process multiple questions"""
-    #     results = []
-    #     for q in questions:
-    #         result = self.query(q, include_sources=False)
-    #         results.append(result)
-    #     return results
-
 
 # ============================================================================
 # FASTAPI APPLICATION
 # ============================================================================
+      
 
-# Initialize FastAPI app
 app = FastAPI(
-    title="BNP Paribas RAG Assistant API",
-    description="AI-powered banking assistant using RAG (Retrieval-Augmented Generation)",
+    title="BNP Paribas RAG API",
+    description="Banking Assistant API",
     version="1.0.0"
 )
 
-# Add CORS middleware
+# CORS - Only allow your frontend domain in production
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify allowed origins
+    allow_origins=[
+        "http://localhost:3000",  # Development
+        "https://chat.vercel.app",  # Production
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
-# Initialize assistant (loads once at startup)
 assistant: Optional[BNPAssistant] = None
 
-
-# Request/Response Models
+# Models
 class QueryRequest(BaseModel):
-    question: str = Field(..., description="Question in French or English", min_length=1)
-    include_sources: bool = Field(True, description="Include source documents in response")
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "question": "Quelles sont les cartes bancaires disponibles ?",
-                "include_sources": True
-            }
-        }
-
+    question: str = Field(..., min_length=1, max_length=500)
+    include_sources: bool = Field(default=True)
 
 class Source(BaseModel):
     category: str
     title: str
     url: str
 
-
 class QueryResponse(BaseModel):
-    question: str
     answer: str
     sources: Optional[List[Source]] = None
 
-
-# class BatchQueryRequest(BaseModel):
-#     questions: List[str] = Field(..., description="List of questions", min_items=1, max_items=10)
-    
-#     class Config:
-#         json_schema_extra = {
-#             "example": {
-#                 "questions": [
-#                     "Quelles cartes bancaires proposez-vous ?",
-#                     "What savings accounts are available?"
-#                 ]
-#             }
-#         }
-
-
 class HealthResponse(BaseModel):
     status: str
-    message: str
-    config: Optional[Dict] = None
+    total_documents: int
+    total_chunks: int
 
-
-# API Endpoints
+# Endpoints - 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize the assistant on startup"""
     global assistant
     try:
         assistant = BNPAssistant()
-        print("✅ FastAPI server ready!")
+        print("✅ FastAPI ready!")
     except Exception as e:
-        print(f"❌ Failed to initialize assistant: {e}")
+        print(f"❌ Failed: {e}")
         raise
-
-
-@app.get("/", response_model=HealthResponse)
-async def root():
-    """Root endpoint - API information"""
-    return {
-        "status": "online",
-        "message": "BNP Paribas RAG Assistant API is running",
-        "config": assistant.config if assistant else None
-    }
-
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Health check endpoint"""
+    """Health check - verify backend is running"""
     if assistant is None:
-        raise HTTPException(status_code=503, detail="Assistant not initialized")
+        raise HTTPException(status_code=503, detail="Not initialized")
     
-    return {
-        "status": "healthy",
-        "message": "All systems operational",
-        "config": {
-            "total_documents": assistant.config['total_documents'],
-            "total_chunks": assistant.config['total_chunks'],
-            "llm_model": assistant.config['llm_model']
-        }
-    }
-
+    return HealthResponse(
+        status="healthy",
+        total_documents=assistant.config['total_documents'],
+        total_chunks=assistant.config['total_chunks']
+    )
 
 @app.post("/query", response_model=QueryResponse)
 async def query(request: QueryRequest):
-    """
-    Ask a question to the assistant
-    
-    - **question**: Your question in French or English
-    - **include_sources**: Whether to include source documents (default: true)
-    """
+    """Main endpoint - answer questions"""
     if assistant is None:
-        raise HTTPException(status_code=503, detail="Assistant not initialized")
+        raise HTTPException(status_code=503, detail="Not initialized")
     
     try:
         result = assistant.query(
             question=request.question,
             include_sources=request.include_sources
         )
-        return result
+        return QueryResponse(
+            answer=result['answer'],
+            sources=result.get('sources')
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error processing query: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error: {str(e)}"
+        )
 
-
-# @app.post("/batch-query", response_model=List[QueryResponse])
-# async def batch_query(request: BatchQueryRequest):
-#     """
-#     Process multiple questions at once
-    
-#     - **questions**: List of questions (max 10)
-#     """
-#     if assistant is None:
-#         raise HTTPException(status_code=503, detail="Assistant not initialized")
-    
-#     try:
-#         results = assistant.batch_query(request.questions)
-#         return results
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Error processing batch query: {str(e)}")
-
-
-# ============================================================================
-# STANDALONE SCRIPT MODE
-# ============================================================================
-
-def run_cli():
-    """Run in CLI mode"""
-    print("\n" + "="*60)
-    print("BNP PARIBAS ASSISTANT - CLI MODE")
-    print("="*60 + "\n")
-    
-    # Initialize assistant
-    assistant = BNPAssistant()
-    
-    # Example queries
-    print("\n" + "="*60)
-    print("EXAMPLE 1: French Query")
-    print("="*60)
-    result1 = assistant.query("Quelles sont les cartes bancaires disponibles ?")
-    print(f"\n❓ {result1['question']}")
-    print(f"💬 {result1['answer']}")
-    print(f"📚 Sources: {len(result1['sources'])}")
-    
-    print("\n" + "="*60)
-    print("EXAMPLE 2: English Query")
-    print("="*60)
-    result2 = assistant.query("What savings accounts do you offer?")
-    print(f"\n❓ {result2['question']}")
-    print(f"💬 {result2['answer']}")
-    print(f"📚 Sources: {len(result2['sources'])}")
-    
-    print("\n" + "="*60)
-    print("✅ CLI examples completed!")
-    print("="*60)
-
-
-def run_server(host: str = "0.0.0.0", port: int = 8000):
-    """Run FastAPI server"""
-    print("\n" + "="*60)
-    print("STARTING FASTAPI SERVER")
-    print("="*60)
-    print(f"Server will be available at: http://{host}:{port}")
-    print(f"API docs: http://{host}:{port}/docs")
-    print(f"Alternative docs: http://{host}:{port}/redoc")
-    print("="*60 + "\n")
-    
-    uvicorn.run(app, host=host, port=port)
-
-
-# ============================================================================
-# MAIN
-# ============================================================================
 
 if __name__ == "__main__":
-    import sys
-    
-    if len(sys.argv) > 1 and sys.argv[1] == "server":
-        # Run FastAPI server
-        run_server()
-    else:
-        # Run CLI examples
-        run_cli()
-        
-        print("\n" + "="*60)
-        print("To start FastAPI server, run:")
-        print("  python rag_openai_prod.py server")
-        print("\nOr manually:")
-        print("  uvicorn rag_openai_prod:app --reload")
-        print("="*60)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

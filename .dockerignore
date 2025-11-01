@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Environment variables (IMPORTANT - don't include secrets in image!)
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+*.md
+docs/
+
+# Data files (if large - ChromaDB should be included though)
+# data/
+# bnp_rag_docs/
+
+# Notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# Logs
+*.log
+logs/
+
+# Azure deployment docs
+azure_deployment.txt
+
+# Testing
+tests/
+pytest.ini
+.pytest_cache/
+
+# Misc
+LICENSE
+images/
+*.csv
+*.xlsx
+robots.txt
+sitemap.xml
