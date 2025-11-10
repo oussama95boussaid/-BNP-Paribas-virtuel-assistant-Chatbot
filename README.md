@@ -2,6 +2,59 @@
 
 A production-ready RAG (Retrieval-Augmented Generation) system that provides intelligent answers to customer questions about BNP Paribas banking products and services.
 
+## 🚀 Production API (Cloud Deployment)
+
+**Live API Endpoint**: http://bnp-assistant-api-oussama.eastus.azurecontainer.io:8000
+
+This backend is deployed on **Azure Container Instances (ACI)** using Azure Container Registry (ACR) and powered by **OpenAI GPT-4**. The cloud deployment provides:
+- ✅ **24/7 Availability** - Always online and ready to serve
+- ✅ **High Performance** - 2 vCPU, 4GB RAM for fast responses
+- ✅ **OpenAI Integration** - Uses GPT-4 for superior answer quality
+- ✅ **Auto-scaling** - Handles multiple concurrent requests
+- ✅ **Secure** - HTTPS support, environment-based secrets management
+
+### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check endpoint |
+| `/query` | POST | Ask questions about BNP Paribas services |
+| `/docs` | GET | Interactive API documentation (Swagger UI) |
+
+### Example API Usage
+
+```bash
+# Health check
+curl http://bnp-assistant-api-oussama.eastus.azurecontainer.io:8000/health
+
+# Ask a question
+curl -X POST http://bnp-assistant-api-oussama.eastus.azurecontainer.io:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "Quelles sont les cartes bancaires disponibles ?",
+    "show_sources": true
+  }'
+```
+
+### Frontend Integration
+
+```javascript
+// Example frontend integration
+const API_URL = "http://bnp-assistant-api-oussama.eastus.azurecontainer.io:8000";
+
+async function askQuestion(question) {
+  const response = await fetch(`${API_URL}/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ 
+      question: question,
+      show_sources: true 
+    })
+  });
+  return await response.json();
+}
+```
+
 ## Frontend
 UI available at: https://github.com/oussama95boussaid/bnp-paribas-assistant-frontend
 Live demo: to come
@@ -16,20 +69,33 @@ Live demo: to come
 
 ## 🛠️ Tech Stack
 
-- **LangChain 1.x** - RAG orchestration with LCEL (LangChain Expression Language)
-- **Ollama** - Local LLM inference (Mistral, Llama, Phi, etc.)
+### Cloud Production Stack
+- **OpenAI GPT-4** - Advanced language model for high-quality answers
+- **Azure Container Instances** - Serverless container hosting
+- **Azure Container Registry** - Docker image management
+- **FastAPI** - High-performance Python web framework
+- **LangChain 1.x** - RAG orchestration with LCEL
 - **HuggingFace Embeddings** - Multilingual sentence embeddings
 - **ChromaDB** - Vector database for semantic search
+
+### Local Development Stack (Optional)
+- **Ollama** - Local LLM inference (Mistral, Llama, Phi, etc.)
 - **Python 3.12+** - Modern Python with type hints
 
 ## 📋 Prerequisites
 
+### For Cloud API (Recommended)
+- Nothing! Just use the API endpoint above ⬆️
+
+### For Local Development with Ollama (Optional)
 - **Python 3.12+**
 - **Ollama** installed and running ([Download here](https://ollama.ai/))
 - At least **8GB RAM** (4GB for lighter models like `phi` or `tinyllama`)
 - **Git** for cloning the repository
 
-## 🚀 Installation
+## 🚀 Installation (Local Development with Ollama - Optional)
+
+> **Note**: If you're using the cloud API, you can skip this section entirely!
 
 ### 1. Clone the Repository
 ```bash
@@ -85,9 +151,13 @@ This will:
 
 ## 💻 Usage
 
-### Production API
+### Using Cloud API (Recommended)
 
-Use the production-ready assistant class:
+Simply make HTTP requests to the deployed API (see Production API section above). No local setup required!
+
+### Local Development with Ollama (Optional)
+
+If you want to run everything locally without cloud dependencies, use the Ollama-based assistant class:
 
 ```python
 from rag_production_ollama import BNPAssistant

@@ -1,0 +1,313 @@
+# ============================================================================
+# GitHub Actions CI/CD - Deploy to Azure Container Instances
+# File: .github/workflows/deploy-backend.yml
+# ============================================================================
+
+name: Deploy Backend to Azure
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch:  # Allow manual trigger
+
+env:
+  AZURE_RESOURCE_GROUP: bnp-assistant-rg
+  ACR_NAME: bnpassistantacr
+  CONTAINER_NAME: bnp-assistant-api
+  IMAGE_NAME: bnp-assistant
+  LOCATION: westeurope
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # ========================================================================
+      # STEP 1: Checkout Code
+      # ========================================================================
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      # ========================================================================
+      # STEP 2: Login to Azure
+      # ========================================================================
+      - name: 🔐 Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # ========================================================================
+      # STEP 3: Login to Azure Container Registry
+      # ========================================================================
+      - name: 🐳 Login to ACR
+        run: |
+          az acr login --name ${{ env.ACR_NAME }}
+
+      # ========================================================================
+      # STEP 4: Build and Push Docker Image
+      # ========================================================================
+      - name: 🔨 Build and Push Docker Image
+        run: |
+          cd backend
+          docker build -t ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} .
+          docker build -t ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest .
+          docker push ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+
+      # ========================================================================
+      # STEP 5: Get ACR Credentials
+      # ========================================================================
+      - name: 🔑 Get ACR Credentials
+        id: acr-creds
+        run: |
+          ACR_USERNAME=$(az acr credential show --name ${{ env.ACR_NAME }} --query username -o tsv)
+          ACR_PASSWORD=$(az acr credential show --name ${{ env.ACR_NAME }} --query passwords[0].value -o tsv)
+          echo "::add-mask::$ACR_PASSWORD"
+          echo "username=$ACR_USERNAME" >> $GITHUB_OUTPUT
+          echo "password=$ACR_PASSWORD" >> $GITHUB_OUTPUT
+
+      # ========================================================================
+      # STEP 6: Get Storage Account Key
+      # ========================================================================
+      - name: 🗄️ Get Storage Key
+        id: storage-key
+        run: |
+          STORAGE_KEY=$(az storage account keys list \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --account-name bnpassistantstorage \
+            --query '[0].value' -o tsv)
+          echo "::add-mask::$STORAGE_KEY"
+          echo "key=$STORAGE_KEY" >> $GITHUB_OUTPUT
+
+      # ========================================================================
+      # STEP 7: Delete Old Container Instance
+      # ========================================================================
+      - name: 🗑️ Delete Old Container
+        run: |
+          az container delete \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --name ${{ env.CONTAINER_NAME }} \
+            --yes \
+            || true  # Don't fail if container doesn't exist
+
+      # ========================================================================
+      # STEP 8: Deploy New Container Instance
+      # ========================================================================
+      - name: 🚀 Deploy to Azure Container Instances
+        run: |
+          az container create \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --name ${{ env.CONTAINER_NAME }} \
+            --image ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --cpu 2 \
+            --memory 4 \
+            --registry-login-server ${{ env.ACR_NAME }}.azurecr.io \
+            --registry-username ${{ steps.acr-creds.outputs.username }} \
+            --registry-password ${{ steps.acr-creds.outputs.password }} \
+            --dns-name-label ${{ env.CONTAINER_NAME }} \
+            --ports 8000 \
+            --environment-variables \
+              OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+            --azure-file-volume-account-name bnpassistantstorage \
+            --azure-file-volume-account-key ${{ steps.storage-key.outputs.key }} \
+            --azure-file-volume-share-name chromadb-share \
+            --azure-file-volume-mount-path /app/data \
+            --location ${{ env.LOCATION }}
+
+      # ========================================================================
+      # STEP 9: Wait for Container to Start
+      # ========================================================================
+      - name: ⏳ Wait for Container to Start
+        run: |
+          echo "Waiting for container to start..."
+          sleep 30
+
+      # ========================================================================
+      # STEP 10: Get Container URL
+      # ========================================================================
+      - name: 🌐 Get Container URL
+        id: get-url
+        run: |
+          FQDN=$(az container show \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --name ${{ env.CONTAINER_NAME }} \
+            --query ipAddress.fqdn -o tsv)
+          echo "url=http://$FQDN:8000" >> $GITHUB_OUTPUT
+          echo "### 🎉 Deployment Successful!" >> $GITHUB_STEP_SUMMARY
+          echo "Backend URL: http://$FQDN:8000" >> $GITHUB_STEP_SUMMARY
+
+      # ========================================================================
+      # STEP 11: Health Check
+      # ========================================================================
+      - name: 🏥 Health Check
+        run: |
+          echo "Testing health endpoint..."
+          sleep 10
+          curl -f ${{ steps.get-url.outputs.url }}/health || echo "Health check failed (container may still be starting)"
+
+      # ========================================================================
+      # STEP 12: View Logs
+      # ========================================================================
+      - name: 📋 View Container Logs
+        if: always()
+        run: |
+          az container logs \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --name ${{ env.CONTAINER_NAME }} \
+            || true
+
+# ============================================================================
+# SETUP INSTRUCTIONS
+# ============================================================================
+
+# 1. Create Azure Service Principal for GitHub Actions
+# Run this command in Azure CLI:
+
+# az ad sp create-for-rbac \
+#   --name "github-actions-bnp-assistant" \
+#   --role contributor \
+#   --scopes /subscriptions/{subscription-id}/resourceGroups/bnp-assistant-rg \
+#   --sdk-auth
+
+# Copy the entire JSON output
+
+# 2. Add GitHub Secrets
+# Go to: GitHub Repo → Settings → Secrets and variables → Actions → New repository secret
+
+# Add these secrets:
+# - AZURE_CREDENTIALS: (paste the JSON from step 1)
+# - OPENAI_API_KEY: sk-your-openai-key
+
+# 3. Push to main branch and watch the magic! 🚀
+
+# ============================================================================
+# ALTERNATIVE: Simpler Version (Without File Share)
+# ============================================================================
+
+# If you don't need persistent ChromaDB (rebuilding on each deploy):
+
+---
+name: Deploy Backend (Simple)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  ACR_NAME: bnpassistantacr
+  IMAGE_NAME: bnp-assistant
+  CONTAINER_NAME: bnp-assistant-api
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: Build and Push
+        run: |
+          az acr login --name ${{ env.ACR_NAME }}
+          cd backend
+          docker build -t ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest .
+          docker push ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+      
+      - name: Deploy
+        run: |
+          az container restart \
+            --resource-group bnp-assistant-rg \
+            --name ${{ env.CONTAINER_NAME }} \
+            || az container create \
+              --resource-group bnp-assistant-rg \
+              --name ${{ env.CONTAINER_NAME }} \
+              --image ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest \
+              --cpu 2 --memory 4 \
+              --dns-name-label ${{ env.CONTAINER_NAME }} \
+              --ports 8000 \
+              --environment-variables OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}"
+
+# ============================================================================
+# MONITORING & NOTIFICATIONS (Optional Add-on)
+# ============================================================================
+
+      # Add Slack notification on success
+      - name: 📢 Slack Notification
+        if: success()
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "✅ Backend deployed successfully!",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Backend Deployment Successful* 🚀\n\nCommit: ${{ github.sha }}\nURL: ${{ steps.get-url.outputs.url }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      # Add email notification on failure
+      - name: 📧 Send Failure Email
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "❌ Backend Deployment Failed"
+          to: your-email@example.com
+          from: GitHub Actions
+          body: |
+            Deployment failed for commit ${{ github.sha }}
+            Check logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+# ============================================================================
+# ROLLBACK WORKFLOW (Optional - for emergencies)
+# ============================================================================
+
+---
+name: Rollback Backend
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: 'Commit SHA to rollback to'
+        required: true
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      
+      - name: Rollback
+        run: |
+          az container delete \
+            --resource-group bnp-assistant-rg \
+            --name bnp-assistant-api --yes
+          
+          az container create \
+            --resource-group bnp-assistant-rg \
+            --name bnp-assistant-api \
+            --image bnpassistantacr.azurecr.io/bnp-assistant:${{ github.event.inputs.commit_sha }} \
+            --cpu 2 --memory 4 \
+            --dns-name-label bnp-assistant-api \
+            --ports 8000 \
+            --environment-variables OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}"
