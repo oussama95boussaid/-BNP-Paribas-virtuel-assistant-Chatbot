@@ -2,9 +2,11 @@
 
 A production-ready RAG (Retrieval-Augmented Generation) system that provides intelligent answers to customer questions about BNP Paribas banking products and services.
 
-## 🚀 Production API (Cloud Deployment)
+## 📚 Data Sources & Compliance
 
-**Live API Endpoint**: http://bnp-assistant-api-oussama.eastus.azurecontainer.io:8000
+All documents used to build the knowledge base were collected from publicly accessible BNP Paribas webpages. Scraping was performed responsibly and in accordance with the site's robots.txt, rate limits, and terms of service. Only publicly available information was included; no private or proprietary data was harvested. If you are the content owner and have concerns or request removal/correction, please open an issue or contact me.
+
+## 🚀 Production API (Cloud Deployment)
 
 This backend is deployed on **Azure Container Instances (ACI)** using Azure Container Registry (ACR) and powered by **OpenAI GPT-4**. The cloud deployment provides:
 - ✅ **24/7 Availability** - Always online and ready to serve
@@ -25,10 +27,10 @@ This backend is deployed on **Azure Container Instances (ACI)** using Azure Cont
 
 ```bash
 # Health check
-curl http://bnp-assistant-api-oussama.eastus.azurecontainer.io:8000/health
+curl http://xxxx.io:8000/health
 
 # Ask a question
-curl -X POST http://bnp-assistant-api-oussama.eastus.azurecontainer.io:8000/query \
+curl -X POST http://xxxxx.io:8000/query \
   -H "Content-Type: application/json" \
   -d '{
     "question": "Quelles sont les cartes bancaires disponibles ?",
@@ -40,7 +42,7 @@ curl -X POST http://bnp-assistant-api-oussama.eastus.azurecontainer.io:8000/quer
 
 ```javascript
 // Example frontend integration
-const API_URL = "http://bnp-assistant-api-oussama.eastus.azurecontainer.io:8000";
+const API_URL = "http://xxxx.io:8000";
 
 async function askQuestion(question) {
   const response = await fetch(`${API_URL}/query`, {
@@ -56,7 +58,7 @@ async function askQuestion(question) {
 ```
 
 ## Frontend
-UI available at: https://github.com/oussama95boussaid/bnp-paribas-assistant-frontend
+UI available at: https://github.com/oussama95boussaid/bnp-paribas-chatbot-assistant-frontend
 Live demo: to come
 
 ## 🎯 Project Objectives
@@ -99,7 +101,7 @@ Live demo: to come
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/oussama95boussaid/-BNP-Paribas-virtuel-assistant-Chatbot.git
+git clone https://github.com/oussama95boussaid/bnp-paribas-chatbot-assistant-backend.git
 cd Backend_server
 ```
 
@@ -309,10 +311,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Oussama Boussaid**
 - GitHub: [@oussama95boussaid](https://github.com/oussama95boussaid)
+- Portfolio : [oussama boussaid](https://oussamaboussaidportfolio.vercel.app/)
 
-## 🙏 Acknowledgments
-
-- BNP Paribas for banking documentation
-- LangChain for RAG framework
-- Ollama for local LLM inference
-- HuggingFace for open-source embeddings
